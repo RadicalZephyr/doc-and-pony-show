@@ -7,7 +7,10 @@ use std::{
 };
 
 use async_std::{path::PathBuf as AsyncPathBuf, sync::RwLock};
-use tide::{http::headers::HeaderValues, log, prelude::*, Request, StatusCode};
+use tide::{
+    http::headers::HeaderValues, log, prelude::*, Body, Error, Request, Response, Result,
+    StatusCode,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct LanguageName(String);
@@ -19,9 +22,9 @@ impl LanguageName {
 }
 
 impl LanguageName {
-    fn from_host_name(host_name_opt: Option<&HeaderValues>) -> tide::Result<Self> {
+    fn from_host_name(host_name_opt: Option<&HeaderValues>) -> Result<Self> {
         host_name_opt
-            .ok_or(tide::Error::from_str(
+            .ok_or(Error::from_str(
                 StatusCode::InternalServerError,
                 "no hostname specified",
             ))
@@ -30,7 +33,7 @@ impl LanguageName {
                     .to_string()
                     .strip_suffix(".docs")
                     .map(String::from)
-                    .ok_or(tide::Error::from_str(
+                    .ok_or(Error::from_str(
                         StatusCode::BadRequest,
                         "improper domain name",
                     ))
@@ -49,10 +52,10 @@ struct LanguageDirectory {
 }
 
 impl LanguageDirectory {
-    fn language(&self, language_name: &LanguageName) -> tide::Result<&Language> {
+    fn language(&self, language_name: &LanguageName) -> Result<&Language> {
         self.languages
             .get(language_name.as_str())
-            .ok_or(tide::Error::from_str(
+            .ok_or(Error::from_str(
                 StatusCode::NotFound,
                 "language has no registered projects",
             ))
@@ -68,11 +71,10 @@ struct Language {
 }
 
 impl Language {
-    fn project(&self, project_name: &str) -> tide::Result<&Project> {
-        self.projects.get(project_name).ok_or(tide::Error::from_str(
-            StatusCode::NotFound,
-            "Project not found",
-        ))
+    fn project(&self, project_name: &str) -> Result<&Project> {
+        self.projects
+            .get(project_name)
+            .ok_or(Error::from_str(StatusCode::NotFound, "Project not found"))
     }
 }
 
@@ -85,18 +87,18 @@ struct Project {
 }
 
 impl Project {
-    async fn serve_path(&self, path: &str) -> tide::Result {
+    async fn serve_path(&self, path: &str) -> Result {
         let file_path = self.full_path_to(path);
         if !file_path.starts_with(&self.directory) {
             log::info!("Unauthorized attempt to read: {:?}", &file_path);
-            Ok(tide::Response::new(StatusCode::Forbidden))
+            Ok(Response::new(StatusCode::Forbidden))
         } else {
             let file_path = AsyncPathBuf::from(file_path);
-            match tide::Body::from_file(&file_path).await {
-                Ok(body) => Ok(tide::Response::builder(StatusCode::Ok).body(body).build()),
+            match Body::from_file(&file_path).await {
+                Ok(body) => Ok(Response::builder(StatusCode::Ok).body(body).build()),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {
                     log::warn!("File not found: {:?}", &file_path);
-                    Ok(tide::Response::new(StatusCode::NotFound))
+                    Ok(Response::new(StatusCode::NotFound))
                 }
                 Err(e) => Err(e.into()),
             }
@@ -119,7 +121,7 @@ impl Project {
 }
 
 #[async_std::main]
-async fn main() -> tide::Result<()> {
+async fn main() -> Result<()> {
     let mut app = tide::with_state(SharedLanguageDirectory::default());
     app.at("/api/register/dir").post(register_dir);
     app.at("/:project_name/*path").all(serve_page);
@@ -127,7 +129,7 @@ async fn main() -> tide::Result<()> {
     Ok(())
 }
 
-async fn register_dir(mut req: Request<SharedLanguageDirectory>) -> tide::Result {
+async fn register_dir(mut req: Request<SharedLanguageDirectory>) -> Result {
     let Project {
         language,
         project_name,
@@ -140,7 +142,7 @@ async fn register_dir(mut req: Request<SharedLanguageDirectory>) -> tide::Result
     .into())
 }
 
-async fn serve_page(req: Request<SharedLanguageDirectory>) -> tide::Result {
+async fn serve_page(req: Request<SharedLanguageDirectory>) -> Result {
     let language_name = LanguageName::from_host_name(req.header("host"))?;
     let project_name = req.param("project_name")?;
     let path = req.param("path")?;
