@@ -14,13 +14,21 @@ impl LanguageName {
 }
 
 impl LanguageName {
-    fn from_host_name(host_name_opt: Option<&HeaderValues>) -> Option<Self> {
+    fn from_host_name(host_name_opt: Option<&HeaderValues>) -> tide::Result<Self> {
         host_name_opt
+            .ok_or(tide::Error::from_str(
+                StatusCode::InternalServerError,
+                "no hostname specified",
+            ))
             .and_then(|host_name| {
                 host_name
                     .to_string()
                     .strip_suffix(".docs")
                     .map(String::from)
+                    .ok_or(tide::Error::from_str(
+                        StatusCode::BadRequest,
+                        "improper domain name",
+                    ))
             })
             .map(|language_name| LanguageName(language_name))
     }
@@ -92,8 +100,7 @@ async fn register_dir(mut req: Request<LanguageDirectory>) -> tide::Result {
 }
 
 async fn serve_page(req: Request<LanguageDirectory>) -> tide::Result {
-    let language_name = LanguageName::from_host_name(req.header("host"))
-        .ok_or(tide::Error::from_str(StatusCode::NotFound, ""))?;
+    let language_name = LanguageName::from_host_name(req.header("host"))?;
     let project_name = req.param("project_name")?;
     let path = req.param("path")?;
     let state = req.state();
