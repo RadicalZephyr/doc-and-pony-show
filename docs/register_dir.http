@@ -1,0 +1,8 @@
+POST http://docs:8080/register/dir
+Content-Type: application/json
+
+{
+  "language": "rust",
+  "project-name": "dodrio",
+  "directory": "/home/geoff/prog/rust/dodrio",
+}
