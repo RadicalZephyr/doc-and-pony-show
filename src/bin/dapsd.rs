@@ -1,12 +1,28 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use async_std::sync::RwLock;
-use tide::prelude::*;
 use tide::Request;
+use tide::{http::headers::HeaderValues, prelude::*};
+
+#[derive(Debug)]
+struct LanguageName(String);
+
+impl LanguageName {
+    fn from_host_name(host_name_opt: Option<&HeaderValues>) -> Option<Self> {
+        host_name_opt
+            .and_then(|host_name| {
+                host_name
+                    .to_string()
+                    .strip_suffix(".docs")
+                    .map(String::from)
+            })
+            .map(|language_name| LanguageName(language_name))
+    }
+}
 
 #[derive(Clone, Debug)]
 struct LanguageDirectory {
-    languages: Arc<RwLock<HashMap<String, Language>>>,
+    languages: Arc<RwLock<HashMap<LanguageName, Language>>>,
 }
 
 impl Default for LanguageDirectory {
@@ -55,6 +71,7 @@ async fn register_dir(mut req: Request<LanguageDirectory>) -> tide::Result {
     .into())
 }
 
-async fn serve_page(mut _req: Request<LanguageDirectory>) -> tide::Result {
+async fn serve_page(req: Request<LanguageDirectory>) -> tide::Result {
+    let language = LanguageName::from_host_name(req.header("host"));
     Ok(format!("string").into())
 }
