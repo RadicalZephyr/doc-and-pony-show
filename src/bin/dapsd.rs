@@ -63,8 +63,11 @@ struct Language {
 }
 
 impl Language {
-    fn project(&self, project_name: &str) -> Option<&Project> {
-        self.projects.get(project_name)
+    fn project(&self, project_name: &str) -> tide::Result<&Project> {
+        self.projects.get(project_name).ok_or(tide::Error::from_str(
+            StatusCode::NotFound,
+            "Project not found",
+        ))
     }
 }
 
@@ -105,9 +108,6 @@ async fn serve_page(req: Request<SharedLanguageDirectory>) -> tide::Result {
     let state = req.state();
     let language_directory = state.read().await;
     let language = language_directory.language(&language_name)?;
-    let project = language.project(project_name).ok_or(tide::Error::from_str(
-        StatusCode::NotFound,
-        "Project not found",
-    ))?;
+    let project = language.project(project_name)?;
     Ok(format!("string").into())
 }
