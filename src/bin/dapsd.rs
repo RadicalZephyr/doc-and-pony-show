@@ -57,8 +57,6 @@ async fn main() -> tide::Result<()> {
 }
 
 async fn register_dir(mut req: Request<LanguageDirectory>) -> tide::Result {
-    println!("{:?}", req.header_names());
-    println!("{:?}", req.header("host"));
     let Project {
         language,
         project_name,
