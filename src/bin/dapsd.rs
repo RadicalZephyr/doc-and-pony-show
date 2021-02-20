@@ -1,8 +1,13 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use async_std::sync::RwLock;
-use tide::{http::headers::HeaderValues, prelude::*};
-use tide::{Request, StatusCode};
+use async_std::{path::PathBuf as AsyncPathBuf, sync::RwLock};
+use tide::{http::headers::HeaderValues, log, prelude::*, Request, StatusCode};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct LanguageName(String);
@@ -79,6 +84,40 @@ struct Project {
     directory: PathBuf,
 }
 
+impl Project {
+    async fn serve_path(&self, path: &str) -> tide::Result {
+        let file_path = self.full_path_to(path);
+        if !file_path.starts_with(&self.directory) {
+            log::info!("Unauthorized attempt to read: {:?}", &file_path);
+            Ok(tide::Response::new(StatusCode::Forbidden))
+        } else {
+            let file_path = AsyncPathBuf::from(file_path);
+            match tide::Body::from_file(&file_path).await {
+                Ok(body) => Ok(tide::Response::builder(StatusCode::Ok).body(body).build()),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    log::warn!("File not found: {:?}", &file_path);
+                    Ok(tide::Response::new(StatusCode::NotFound))
+                }
+                Err(e) => Err(e.into()),
+            }
+        }
+    }
+
+    fn full_path_to(&self, path: &str) -> PathBuf {
+        let mut file_path = self.directory.clone();
+        for p in Path::new(path) {
+            if p == OsStr::new(".") {
+                continue;
+            } else if p == OsStr::new("..") {
+                file_path.pop();
+            } else {
+                file_path.push(&p);
+            }
+        }
+        file_path
+    }
+}
+
 #[async_std::main]
 async fn main() -> tide::Result<()> {
     let mut app = tide::with_state(SharedLanguageDirectory::default());
@@ -109,5 +148,5 @@ async fn serve_page(req: Request<SharedLanguageDirectory>) -> tide::Result {
     let language_directory = state.read().await;
     let language = language_directory.language(&language_name)?;
     let project = language.project(project_name)?;
-    Ok(format!("string").into())
+    project.serve_path(path).await
 }
