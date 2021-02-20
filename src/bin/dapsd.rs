@@ -4,7 +4,7 @@ use async_std::sync::RwLock;
 use tide::Request;
 use tide::{http::headers::HeaderValues, prelude::*};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct LanguageName(String);
 
 impl LanguageName {
@@ -20,9 +20,11 @@ impl LanguageName {
     }
 }
 
+type LanguageMap = HashMap<String, Language>;
+
 #[derive(Clone, Debug)]
 struct LanguageDirectory {
-    languages: Arc<RwLock<HashMap<LanguageName, Language>>>,
+    languages: Arc<RwLock<LanguageMap>>,
 }
 
 impl Default for LanguageDirectory {
@@ -33,10 +35,12 @@ impl Default for LanguageDirectory {
     }
 }
 
+type ProjectMap = HashMap<String, Project>;
+
 #[derive(Debug, Default)]
 struct Language {
     name: String,
-    projects: HashMap<String, Project>,
+    projects: ProjectMap,
 }
 
 #[derive(Debug, Default, Deserialize)]
